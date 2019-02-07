@@ -37,8 +37,7 @@ class textgenrnn:
     def __init__(self, weights_path=None,
                  vocab_path=None,
                  config_path=None,
-                 context_labels=None,
-                 name="senttextgenrnn"):
+                 name="textgenrnn"):
 
         if weights_path is None:
             weights_path = resource_filename(__name__,
@@ -52,16 +51,6 @@ class textgenrnn:
             with open(config_path, 'r',
                       encoding='utf8', errors='ignore') as json_file:
                 self.config = json.load(json_file)
-        
-        if context_labels is not None:
-            lb = LabelBinarizer()
-            lb.fit(context_labels)
-            
-            self._lb = lb
-            self.encode_context_label = lambda context_label: self._lb.transform([context_label])[0]
-        else:
-            self._lb = None
-            self.encode_context_label = None
         
         self.config.update({'name': name})
         self.default_config.update({'name': name})
@@ -78,16 +67,14 @@ class textgenrnn:
                                       weights_path=weights_path)
         self.indices_char = dict((self.vocab[c], c) for c in self.vocab)
 
-    def generate(self, n=1, return_as_list=False, prefix=None,
+    def generate(self, n=1, sentiment_value=0,
+                 return_as_list=False, prefix=None,
                  temperature=[1.0, 0.5, 0.2, 0.2],
                  max_gen_length=300, interactive=False,
-                 top_n=3, progress=True, context_label=None):
+                 top_n=3, progress=True):
         gen_texts = []
         iterable = trange(n) if progress and n > 1 else range(n)
         for _ in iterable:
-            if self.encode_context_label is not None:
-                context_label = self.encode_context_label(context_label)
-            
             gen_text, _ = textgenrnn_generate(self.model,
                                            self.vocab,
                                            self.indices_char,
@@ -101,7 +88,7 @@ class textgenrnn:
                                            interactive,
                                            top_n,
                                            prefix,
-                                           context_label)
+                                           sentiment_value)
             if not return_as_list:
                 print("{}\n".format(gen_text))
             gen_texts.append(gen_text)
@@ -114,7 +101,7 @@ class textgenrnn:
                   '#'*20)
             self.generate(n, temperature=temperature, progress=False, **kwargs)
 
-    def train_on_texts(self, texts, context_labels=None,
+    def train_on_texts(self, texts, sentiment_values=None,
                        batch_size=128,
                        num_epochs=50,
                        verbose=1,
@@ -129,9 +116,12 @@ class textgenrnn:
                        multi_gpu=False,
                        **kwargs):
 
+        if sentiment_values is None:
+            sentiment_values = list([0]) * len(texts)
+
         if new_model and not via_new_model:
             self.train_new_model(texts,
-                                 context_labels=context_labels,
+                                 sentiment_values=sentiment_values,
                                  num_epochs=num_epochs,
                                  gen_epochs=gen_epochs,
                                  train_size=train_size,
@@ -142,12 +132,6 @@ class textgenrnn:
                                  multi_gpu=multi_gpu,
                                  **kwargs)
             return
-
-        if context_labels is not None:
-            if self._lb is not None:
-                context_labels = self._lb.transform(context_labels)
-            else:
-                context_labels = LabelBinarizer().fit_transform(context_labels)
 
         if 'prop_keep' in kwargs:
             train_size = prop_keep
@@ -176,7 +160,7 @@ class textgenrnn:
         if train_size < 1.0 and validation:
             indices_list_val = indices_list[~indices_mask, :]
             gen_val = generate_sequences_from_texts(
-                texts, indices_list_val, self, context_labels, batch_size)
+                texts, indices_list_val, self, sentiment_values, batch_size)
             val_steps = max(
                 int(np.floor(indices_list_val.shape[0] / batch_size)), 1)
 
@@ -191,7 +175,7 @@ class textgenrnn:
         steps_per_epoch = max(int(np.floor(num_tokens / batch_size)), 1)
 
         gen = generate_sequences_from_texts(
-            texts, indices_list, self, context_labels, batch_size)
+            texts, indices_list, self, sentiment_values, batch_size)
 
         base_lr = 4e-3
 
@@ -199,7 +183,7 @@ class textgenrnn:
         def lr_linear_decay(epoch):
             return (base_lr * (1 - (epoch / num_epochs)))
 
-        if context_labels is not None:
+        if sentiment_values is not None:
             if new_model:
                 weights_path = None
             else:
@@ -209,7 +193,7 @@ class textgenrnn:
             self.model = textgenrnn_model(self.num_classes,
                                           dropout=dropout,
                                           cfg=self.config,
-                                          context_size=context_labels.shape[1],
+                                          context_size=1,
                                           weights_path=weights_path)
 
         model_t = self.model
@@ -243,17 +227,20 @@ class textgenrnn:
                               )
 
         # Keep the text-only version of the model if using context labels
-        if context_labels is not None:
-            self.model = Model(inputs=self.model.input[0],
-                               outputs=self.model.output[1])
+        # if sentiment_values is not None:
+        #     self.model = Model(inputs=self.model.input[0],
+        #                        outputs=self.model.output[1])
 
-    def train_new_model(self, texts, context_labels=None, num_epochs=50,
+    def train_new_model(self, texts, sentiment_values=None, num_epochs=50,
                         gen_epochs=1, batch_size=128, dropout=0.0,
                         train_size=1.0,
                         validation=True, save_epochs=0,
                         multi_gpu=False, **kwargs):
         self.config = self.default_config.copy()
         self.config.update(**kwargs)
+
+        if sentiment_values is None:
+            sentiment_values = list([0]) * len(texts)
 
         print("Training new model w/ {}-layer, {}-cell {}LSTMs".format(
             self.config['rnn_layers'], self.config['rnn_size'],
@@ -304,7 +291,7 @@ class textgenrnn:
 
         self.train_on_texts(texts, new_model=True,
                             via_new_model=True,
-                            context_labels=context_labels,
+                            sentiment_values=sentiment_values,
                             num_epochs=num_epochs,
                             gen_epochs=gen_epochs,
                             train_size=train_size,

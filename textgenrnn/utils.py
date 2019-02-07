@@ -53,7 +53,7 @@ def textgenrnn_generate(model, vocab,
                         interactive=False,
                         top_n=3,
                         prefix=None,
-                        encoded_context_label=None,
+                        sentiment_value=None,
                         synthesize=False,
                         stop_tokens=[' ', '\n']):
     '''
@@ -84,22 +84,19 @@ def textgenrnn_generate(model, vocab,
     if not isinstance(temperature, list):
         temperature = [temperature]
 
-    print('HAHAH')
-    print(encoded_context_label)
-
-    if len(model.inputs) > 1 and encoded_context_label is None:
+    if len(model.inputs) > 1 and sentiment_value is None:
         model = Model(inputs=model.inputs[0], outputs=model.outputs[1])
 
-    if len(model.inputs) < 2 and encoded_context_label is not None:
-        raise ValueError('Model has 1 input, but contex label "{}" passed to generate function'.format(encoded_context_label))
+    if len(model.inputs) < 2 and sentiment_value is not None:
+        raise ValueError('Model has 1 input, but sentiment value "{}" passed to generate function'.format(sentiment_value))
 
     while not end and len(text) < max_gen_length:
         encoded_text = textgenrnn_encode_sequence(text[-maxlen:],
                                                   vocab, maxlen)
         next_temperature = temperature[(len(text) - 1) % len(temperature)]
 
-        if encoded_context_label is not None:
-            inputs = [encoded_text, encoded_context_label]
+        if sentiment_value is not None:
+            inputs = [encoded_text, np.array([sentiment_value])]
             output = model.predict(inputs, batch_size=1)[0][0]
         else:
             inputs = encoded_text

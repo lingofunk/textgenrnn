@@ -1,7 +1,7 @@
 import sys, os
 import pandas as pd
 
-from senttextgenrnn.textgenrnn import textgenrnn
+from textgenrnn.textgenrnn import textgenrnn
 
 data_folder = '/media/student/8d1913cf-1155-47a5-a7db-b9a51f445d8f/student/data'
 
@@ -11,7 +11,7 @@ os.listdir(data_folder)
 
 reviews = pd.read_csv(
     data_folder + '/restaurant_reviews.csv',
-    nrows=1,
+    nrows=100,
     sep=',',
     index_col=0,
     usecols=['stars', 'text']
@@ -25,14 +25,26 @@ reviews.reset_index(inplace=True)
 texts = reviews['text'].values
 labels = reviews['stars'].values
 
+label2sentiment = {
+    1.0: -1,
+    2.0: -0.8,
+    3.0: 0,
+    4.0: +0.8,
+    5.0: +1
+}
+
+sentiments = [label2sentiment[label] for label in labels]
+
+# print(sentiments)
+
 model = textgenrnn()
 
 ###
 
 word_level = False
 new_model = False
-num_epochs = 1
-gen_epochs = 5
+num_epochs = 2
+gen_epochs = 1
 max_length = 40
 
 ###
@@ -48,9 +60,11 @@ model.train_on_texts(
 
 model.save()
 
-print(model.generate(1))
-print(model.generate(1, 1.0))
-print(model.generate(1, 2.0))
-print(model.generate(1, 3.0))
-print(model.generate(1, 4.0))
-print(model.generate(1, 5.0))
+print('Samples')
+
+sentiment_values = [-1, -0.8, -0.5, -0.1, 0, +0.1, +0.5, +0.8, +1]
+
+for sentiment_value in sentiment_values:
+    print('Sentiment:', sentiment_value)
+    print(model.generate(1, sentiment_value, return_as_list=True)[0])
+    print()
