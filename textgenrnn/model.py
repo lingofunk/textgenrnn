@@ -11,7 +11,7 @@ def textgenrnn_model(num_classes, cfg, context_size=None,
                      dropout=0.0,
                      optimizer=RMSprop(lr=4e-3, rho=0.99)):
     '''
-    Builds the model architecture for textgenrnn and
+    Builds the model architecture for senttextgenrnn and
     loads the specified weights for the model.
     '''
 

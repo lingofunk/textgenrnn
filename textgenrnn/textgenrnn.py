@@ -37,7 +37,8 @@ class textgenrnn:
     def __init__(self, weights_path=None,
                  vocab_path=None,
                  config_path=None,
-                 name="textgenrnn"):
+                 context_labels=None,
+                 name="senttextgenrnn"):
 
         if weights_path is None:
             weights_path = resource_filename(__name__,
@@ -51,7 +52,17 @@ class textgenrnn:
             with open(config_path, 'r',
                       encoding='utf8', errors='ignore') as json_file:
                 self.config = json.load(json_file)
-
+        
+        if context_labels is not None:
+            lb = LabelBinarizer()
+            lb.fit(context_labels)
+            
+            self._lb = lb
+            self.encode_context_label = lambda context_label: self._lb.transform([context_label])[0]
+        else:
+            self._lb = None
+            self.encode_context_label = None
+        
         self.config.update({'name': name})
         self.default_config.update({'name': name})
 
@@ -70,10 +81,13 @@ class textgenrnn:
     def generate(self, n=1, return_as_list=False, prefix=None,
                  temperature=[1.0, 0.5, 0.2, 0.2],
                  max_gen_length=300, interactive=False,
-                 top_n=3, progress=True):
+                 top_n=3, progress=True, context_label=None):
         gen_texts = []
         iterable = trange(n) if progress and n > 1 else range(n)
         for _ in iterable:
+            if self.encode_context_label is not None:
+                context_label = self.encode_context_label(context_label)
+            
             gen_text, _ = textgenrnn_generate(self.model,
                                            self.vocab,
                                            self.indices_char,
@@ -86,7 +100,8 @@ class textgenrnn:
                                            max_gen_length,
                                            interactive,
                                            top_n,
-                                           prefix)
+                                           prefix,
+                                           context_label)
             if not return_as_list:
                 print("{}\n".format(gen_text))
             gen_texts.append(gen_text)
@@ -128,8 +143,11 @@ class textgenrnn:
                                  **kwargs)
             return
 
-        if context_labels:
-            context_labels = LabelBinarizer().fit_transform(context_labels)
+        if context_labels is not None:
+            if self._lb is not None:
+                context_labels = self._lb.transform(context_labels)
+            else:
+                context_labels = LabelBinarizer().fit_transform(context_labels)
 
         if 'prop_keep' in kwargs:
             train_size = prop_keep

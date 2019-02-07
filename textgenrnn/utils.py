@@ -53,6 +53,7 @@ def textgenrnn_generate(model, vocab,
                         interactive=False,
                         top_n=3,
                         prefix=None,
+                        encoded_context_label=None,
                         synthesize=False,
                         stop_tokens=[' ', '\n']):
     '''
@@ -83,18 +84,31 @@ def textgenrnn_generate(model, vocab,
     if not isinstance(temperature, list):
         temperature = [temperature]
 
-    if len(model.inputs) > 1:
+    print('HAHAH')
+    print(encoded_context_label)
+
+    if len(model.inputs) > 1 and encoded_context_label is None:
         model = Model(inputs=model.inputs[0], outputs=model.outputs[1])
+
+    if len(model.inputs) < 2 and encoded_context_label is not None:
+        raise ValueError('Model has 1 input, but contex label "{}" passed to generate function'.format(encoded_context_label))
 
     while not end and len(text) < max_gen_length:
         encoded_text = textgenrnn_encode_sequence(text[-maxlen:],
                                                   vocab, maxlen)
         next_temperature = temperature[(len(text) - 1) % len(temperature)]
 
+        if encoded_context_label is not None:
+            inputs = [encoded_text, encoded_context_label]
+            output = model.predict(inputs, batch_size=1)[0][0]
+        else:
+            inputs = encoded_text
+            output = model.predict(inputs, batch_size=1)[0]
+
         if not interactive:
             # auto-generate text without user intervention
             next_index = textgenrnn_sample(
-                model.predict(encoded_text, batch_size=1)[0],
+                output,
                 next_temperature)
             next_char = indices_char[next_index]
             text += [next_char]
@@ -107,7 +121,7 @@ def textgenrnn_generate(model, vocab,
         else:
             # ask user what the next char/word should be
             options_index = textgenrnn_sample(
-                model.predict(encoded_text, batch_size=1)[0],
+                output,
                 next_temperature,
                 interactive=interactive,
                 top_n=top_n
@@ -291,9 +305,9 @@ class save_model_weights(Callback):
         self.save_epochs = save_epochs
 
     def on_epoch_end(self, epoch, logs={}):
-        if len(self.textgenrnn.model.inputs) > 1:
-            self.textgenrnn.model = Model(inputs=self.model.input[0],
-                                          outputs=self.model.output[1])
+        # if len(self.textgenrnn.model.inputs) > 1:
+        #     self.textgenrnn.model = Model(inputs=self.model.input[0],
+        #                                   outputs=self.model.output[1])
         if self.save_epochs > 0 and (epoch+1) % self.save_epochs == 0 and self.num_epochs != (epoch+1):
             print("Saving Model Weights — Epoch #{}".format(epoch+1))
             self.textgenrnn.model.save_weights(
