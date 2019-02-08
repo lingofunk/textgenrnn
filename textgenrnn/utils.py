@@ -12,6 +12,8 @@ import h5py
 import csv
 import re
 
+from textgenrnn.constants import SENTIMENT_VECTOR_LENGTH, SENTIMENT_VALUE_REDUCTION_FACTOR
+
 
 def textgenrnn_sample(preds, temperature, interactive=False, top_n=3):
     '''
@@ -96,7 +98,7 @@ def textgenrnn_generate(model, vocab,
         next_temperature = temperature[(len(text) - 1) % len(temperature)]
 
         if sentiment_value is not None:
-            inputs = [encoded_text, np.array([sentiment_value])]
+            inputs = [encoded_text, encode_sentiment_value(sentiment_value)]
             output = model.predict(inputs, batch_size=1)[0][0]
         else:
             inputs = encoded_text
@@ -186,6 +188,26 @@ def textgenrnn_encode_sequence(text, vocab, maxlen):
 
     encoded = np.array([vocab.get(x, 0) for x in text])
     return sequence.pad_sequences([encoded], maxlen=maxlen)
+
+
+def get_sentiment_value_index(value):
+    index = (value - (-1)) / (+1 - (-1)) * SENTIMENT_VECTOR_LENGTH
+    index = int(np.round(index))
+
+    return index
+
+
+def encode_sentiment_value(value):
+    if SENTIMENT_VECTOR_LENGTH == 1:
+        return [value]
+
+    value_index = get_sentiment_value_index(value)
+
+    vector = np.ones(SENTIMENT_VECTOR_LENGTH,)
+    factors = np.ones(SENTIMENT_VECTOR_LENGTH,) * SENTIMENT_VALUE_REDUCTION_FACTOR
+    powers = np.abs(np.arange(SENTIMENT_VECTOR_LENGTH) - value_index)
+
+    return vector * factors ** powers
 
 
 def textgenrnn_texts_from_file(file_path, header=True,
